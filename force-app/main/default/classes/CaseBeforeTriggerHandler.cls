@@ -23,12 +23,15 @@ public with sharing class CaseBeforeTriggerHandler {
     }
 
 
-    public void onBeforeUpdate(List<Case> casesBeforeUpdate) {
-        for (Case caseUpdated : [SELECT AccountId, Status FROM Case where id in:casesBeforeUpdate]){
+    public static void onBeforeUpdate(List<Case> casesBeforeUpdate) {
+        List<Id> accountIds = new List<Id>();
+        for (Case caseUpdated : casesBeforeUpdate){
             if(caseUpdated.Status == 'Closed'){
-                ExternalSystemService service = new ExternalSystemService();
-                service.registerAttendees(caseUpdated);
+                accountIds.add(caseUpdated.AccountId);
             }
+        }
+        if (accountIds.size()>0){
+            ExternalSystemService.registerAttendees(accountIds);
         }
     }
 

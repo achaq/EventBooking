@@ -1,44 +1,54 @@
 public  class ExternalSystemService {
 
-    private String webServiceURL;
+    public static void registerAttendees(List<Id> AccountIds){
+    
+        List<Contact> attendees = [SELECT id,name, email FROM Contact WHERE AccountId in :AccountIds];
+        List<Contact> contactsToMail = new List<Contact>();
+        Http http = new Http();
+        HttpRequest request = new HttpRequest();
+        request.setEndpoint('callout:ReservationExternalSystem');
+        request.setMethod('POST');
+        request.setHeader('Content-Type', 'application/json;charset=UTF-8');
+        // Set the body as a JSON object
 
-    public ExternalSystemService(){
-        this.webServiceURL = 'https://th-apex-http-callout.herokuapp.com/animals';
+        HttpResponse response;
+
+        for(Contact c : attendees){
+            request.setBody('{"name":"'+ c.Email + '-' + c.Name  +'}');
+            response = http.send(request);
+          
+            if (response.getStatusCode() != 201) {
+                System.debug('The status code returned was not expected: ' +response.getStatusCode() + ' ' + response.getStatus());
+            }
+            else {
+                contactsToMail.add(c);
+            }
+        }
+        notifyAttendeesByEmail(contactsToMail);
+    
     }
 
-    public void registerAttendees(Case r){
-            for(Account a : [SELECT id FROM Account where id = :r.AccountId]){
-                for(Contact c : [SELECT id,name, email FROM Contact where accountid =: a.id ]){
-                    Http http = new Http();
-                    HttpRequest request = new HttpRequest();
-                    request.setEndpoint(this.webServiceURL);
-                    request.setMethod('POST');
-                    request.setHeader('Content-Type', 'application/json;charset=UTF-8');
-                    // Set the body as a JSON object
-                    request.setBody('{"name":"'+ c.name + '-' + c.email  +'}');
-                    HttpResponse response = http.send(request);
-                    // Parse the JSON response
-                    if (response.getStatusCode() != 201) {
-                        System.debug('The status code returned was not expected: ' +
-                            response.getStatusCode() + ' ' + response.getStatus());
-                    } else {
-                       // Everything went as expected.
-                       notifyAttendeeByEmail(c);
-                    }
-                }
-            
+    public static void notifyAttendeesByEmail(List<Contact> contacts){
+
+        List<Messaging.SingleEmailMessage> lstMails = new List<Messaging.SingleEmailMessage>();
+        for(Contact c : contacts){
+            Messaging.SingleEmailMessage message = new Messaging.SingleEmailMessage();
+            message.toAddresses = new String[] { c.Email };
+            message.optOutPolicy = 'FILTER';
+            message.subject = 'The Event Booked';
+            message.plainTextBody = 'hello ' + c.Name+ ', the Event is booked ';
+            lstMails.add(message);
         }
-    } 
 
-    public void notifyAttendeeByEmail(Contact account){
-      
-        Task tk = new Task();
-        tk.Subject = 'Send Email To' + account.name;
-        tk.Status = 'Open';
-        tk.Priority = 'Normal';
-        tk.WhatId = account.ID;
-        insert tk;
-    } 
+        Messaging.SendEmailResult[] results = Messaging.sendEmail(lstMails);
 
+        for(Messaging.SendEmailResult result : results){
+            if (results[0].success) {
+                System.debug('The email was sent successfully.');
+            } else {
+                System.debug('The email failed to send: ' + results[0].errors[0].message);
+            }
+        }
+    }
 
 }
